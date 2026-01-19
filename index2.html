@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Live2D Web Demo</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/live2dcubismcore@1.0.0/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: transparent; 
+        }
+        #canvas { display: block; width: 100%; height: 100%; pointer-events: auto; }
+        
+        /* 调试信息样式 */
+        #debug {
+            position: absolute; top: 0; left: 0; color: cyan; 
+            font-family: monospace; font-size: 16px; background: rgba(0,0,0,0.5); 
+            padding: 5px; pointer-events: none;
+            z-index: 10;
+        }
+
+        /* 新增：字幕样式 */
+        #subtitle {
+            position: absolute;
+            bottom: 10%;
+            width: 100%;
+            text-align: center;
+            font-family: "Microsoft YaHei", sans-serif;
+            font-size: 24px;
+            color: white;
+            text-shadow: 2px 2px 4px #000000;
+            pointer-events: none; /* 防止遮挡鼠标点击 */
+            z-index: 20;
+            transition: opacity 0.5s;
+            opacity: 0; /* 默认隐藏 */
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+        #subtitle.visible {
+            opacity: 1;
+        }
+		/* 右键菜单容器 */
+		#contextMenu {
+			display: none; position: absolute; z-index: 1000; width: 220px;
+			background: rgba(20, 20, 20, 0.95); backdrop-filter: blur(10px);
+			border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+			box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6); color: #eee;
+			font-family: "Microsoft YaHei", sans-serif; font-size: 14px;
+			overflow: hidden; user-select: none;
+		}
+
+		/* 标题 */
+		.menu-title {
+			padding: 8px 15px; font-size: 12px; font-weight: bold; color: #aaa;
+			background: rgba(0,0,0,0.4); pointer-events: none;
+		}
+
+		/* 菜单项 */
+		.menu-item {
+			padding: 10px 15px; cursor: pointer; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+			transition: background 0.2s; display: flex; justify-content: space-between; align-items: center;
+		}
+		.menu-item:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+
+		/* 动作列表容器 (关键：默认隐藏) */
+		#motionListContainer {
+			display: none; max-height: 250px; overflow-y: auto;
+			background: rgba(0, 0, 0, 0.3); border-top: 1px solid rgba(255, 255, 255, 0.1);
+		}
+
+		/* 列表里的动作项 */
+		.motion-item {
+			padding: 8px 15px 8px 30px; cursor: pointer; font-size: 13px; color: #ccc;
+			border-bottom: 1px solid rgba(255,255,255,0.02);
+		}
+		.motion-item:hover { background: rgba(64, 158, 255, 0.2); color: #fff; }
+
+		/* 滚动条美化 */
+		#motionListContainer::-webkit-scrollbar { width: 5px; }
+		#motionListContainer::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="debug">Waiting for Python...</div>
+    <div id="subtitle"></div>
+	<div id="contextMenu">
+		<div class="menu-title">控制面板</div>
+		
+		<div class="menu-item" id="btnToggleMotions">
+			<span>🎭 选择动作</span>
+			<span id="arrowIcon">▼</span>
+		</div>
+		
+		<div id="motionListContainer"></div>
+
+		<div class="menu-title">模型切换</div>
+		<div id="modelSwitchContainer"></div>
+
+		<div class="menu-title">系统功能</div>
+		<div class="menu-item" onclick="window.playAllMotions()">▶ 循环演示</div>
+		
+		<div id="exitContainer"></div>
+	</div>
+
+	<script>
+            // ================= 用户配置区域 =================
+            // 在此列表中添加或删除模型文件夹名即可
+            const AVAILABLE_MODELS = ["lafei_4", "lafeiII_3"];
+
+            // ================= 全局变量 =================
+            window.model = null;
+            window.voiceMap = {};
+            window.voiceTextMap = {};
+            window.randomVoicePool = [];
+            window.targetX = 0;
+            window.targetY = 0;
+            window.lastPythonCommandTime = 0;
+            let clickCount = 0;
+            let subtitleTimer = null;
+    
+            // ================= 核心功能函数 =================
+    
+            // 保留用户版本的函数
+            function getMotionFadeInTime(groupName) {
+                if (!window.model) return 0;
+                const manager = window.model.internalModel.motionManager;
+                const definitions = manager.definitions[groupName];
+    
+                if (!definitions || definitions.length === 0) {
+                    return 500; // 默认值
+                }
+    
+                const motionDef = definitions[0];
+                
+                let durationSec = motionDef.FadeInTime ?? motionDef.fadeInTime ?? manager.motionFadeInTime ?? 1.0;
+                console.log(`[Config] 动作组 ${groupName} 的淡入时间: ${durationSec}秒`);
+                return durationSec * 1000;
+            }
+    
+            function showSubtitle(text, duration = 5000) {
+                if (!text) return;
+                const el = document.getElementById('subtitle');
+                el.innerText = text;
+                el.classList.add('visible');
+    
+                if (subtitleTimer) clearTimeout(subtitleTimer);
+                subtitleTimer = setTimeout(() => {
+                    el.classList.remove('visible');
+                }, duration);
+            }
+    
+            window.updateFocus = (dx, dy) => {
+                if (window.model) window.model.focus(dx, dy);
+                window.lastPythonCommandTime = Date.now();
+                document.getElementById('debug').innerText = `Python: ${dx.toFixed(2)}, ${dy.toFixed(2)}`;
+            };
+    
+            window.playMotionWithVoice = (groupName) => {
+                return new Promise(async (resolve) => {
+                    if (!window.model || !window.voiceMap) { resolve(); return; }
+    
+                    const fadeInTime = getMotionFadeInTime(groupName);
+                    const delayMs = fadeInTime * 1;
+    
+                    const voicePath = window.voiceMap[groupName];
+                    let audioObj = null;
+    
+                    if (voicePath) {
+                        audioObj = new Audio(voicePath);
+                        audioObj.preload = "auto";
+                        await new Promise((resolveLoad) => {
+                            if (audioObj.readyState >= 3) { resolveLoad(); } 
+                            else {
+                                audioObj.addEventListener('canplay', resolveLoad, { once: true });
+                                audioObj.addEventListener('error', resolveLoad, { once: true });
+                                setTimeout(resolveLoad, 2000);
+                            }
+                        });
+                    }
+					let voiceTask = Promise.resolve();
+                    if (delayMs > 0 && audioObj) {
+                        await new Promise(r => setTimeout(r, delayMs));
+                    }
+    
+                    if (audioObj) {
+                        voiceTask = window.model.speak(audioObj);
+                    } else if (window.randomVoicePool && window.randomVoicePool.length > 0) {
+                        const randomPath = window.randomVoicePool[Math.floor(Math.random() * window.randomVoicePool.length)];
+                        voiceTask = window.model.speak(randomPath);
+                    }
+                    
+                    const motionTask = new Promise((resolveMotion) => window.model.once('motionFinish', resolveMotion));
+                    
+                    if (!window.model.motion(groupName)) { resolve(); return; }
+    
+                    await Promise.all([motionTask, voiceTask]);
+                    resolve();
+                });
+            };
+			
+			window.playMotion = (groupName) => {
+				if (window.model) {
+					if (window.model.internalModel.motionManager.motionGroups[groupName]) {
+						console.log(`play motion ${groupName}`)
+						window.model.motion(groupName);
+					} else {
+						console.log(`动作组 ${groupName} 不存在，尝试播放随机动作`);
+						window.playRandomMotion();
+					}
+				}
+			};
+            
+            window.playAllMotions = async () => {
+                if (!window.model) return;
+                const groups = Object.keys(window.model.internalModel.motionManager.motionGroups);
+                for (const group of groups) {
+                    await window.playMotionWithVoice(group);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            };
+    
+            // ================= Pixi & Live2D 初始化 =================
+    
+            const app = new PIXI.Application({
+                view: document.getElementById('canvas'),
+                autoStart: true,
+                resizeTo: window,
+                transparent: true,
+                backgroundAlpha: 0,
+                antialias: true
+            });
+    
+            // 此函数可由 Python 或浏览器自己调用
+            window.initialize = async function(modelName, characterData) {
+                console.log(`Initializing model: ${modelName}`);
+
+                // 如果已有模型，先销毁
+                if(window.model) {
+                    app.stage.removeChild(window.model);
+                    window.model.destroy();
+                    window.model = null;
+                }
+    
+                // 1. 设置数据映射
+                const SOUND_ROOT = `${modelName}/sound/`;
+                window.voiceMap = Object.entries(characterData.voiceMap).reduce((acc, [key, value]) => {
+                    acc[key] = SOUND_ROOT + value;
+                    return acc;
+                }, {});
+                window.voiceTextMap = characterData.voiceTextMap;
+                window.randomVoicePool = Object.values(window.voiceMap).slice(0, 4);
+    
+                // 2. 加载模型
+                const MODEL_JSON_URL = `${modelName}/${modelName}.model3.json`;
+                const model = await PIXI.live2d.Live2DModel.from(MODEL_JSON_URL, {
+                    autoInteract: false,
+                    autoUpdate: true
+                });
+    
+                model.interactive = true;
+                model.blink = true;
+                model.lipSync = true;
+                
+                // 3. 重写 speak 方法
+                model.speak = function(source) {
+                    return new Promise((resolve) => {
+                        if (!source) { resolve(); return; }
+                        if (this._currentAudio) this._currentAudio.pause();
+    
+                        const audio = (typeof source === 'string') ? new Audio(source) : source;
+                        this._currentAudio = audio;
+    
+                        audio.onended = () => resolve();
+                        audio.onerror = (e) => { console.warn(`[Audio] 播放异常`, e); resolve(); };
+                        
+                        const playPromise = audio.play();
+                        if (playPromise) {
+                            playPromise.catch(error => {
+                                if (error.name !== 'AbortError') console.warn("播放中断:", error);
+                                resolve();
+                            });
+                        }
+    
+                        const srcPath = audio.src || (typeof source === 'string' ? source : "");
+                        if (srcPath) {
+                            const filename = decodeURIComponent(srcPath.split('/').pop());
+                            const text = window.voiceTextMap[filename];
+                            if (text) showSubtitle(text, audio.duration * 1000 + 500);
+                        }
+                    });
+                };
+    
+                // 4. 设置交互事件 (保留用户的 console.log)
+                const groups = Object.keys(model.internalModel.motionManager.motionGroups);
+                model.on('pointertap', (event) => {
+                    if (event.data.button !== 0) return;
+                    const currentGroup = groups[clickCount % groups.length];
+                    window.playMotionWithVoice(currentGroup);
+                    clickCount++;
+    				console.log(`点击计数: ${clickCount}, 下一个动作: ${groups[clickCount % groups.length]}`);
+                });
+    
+                app.stage.addChild(model);
+                window.model = model;
+    
+                fitLayout();
+                window.onresize = fitLayout;
+            }
+            
+            function fitLayout() {
+                if (!window.model) return;
+                const modelHeight = window.model.internalModel.height;
+                if (!modelHeight) return;
+    
+                const scale = (window.innerHeight * 0.8) / modelHeight;
+                window.model.scale.set(scale);
+                window.model.x = window.innerWidth / 2;
+                window.model.y = window.innerHeight / 2 + 50;
+                window.model.anchor.set(0.5, 0.5);
+            }
+    
+            // ================= 启动逻辑 =================
+            
+            (async function main() {
+                await new Promise(resolve => setTimeout(resolve, 100));
+    
+                if (window.isDesktop) {
+                    console.log("在桌面模式下运行，等待 Python 初始化...");
+                    document.getElementById('debug').innerText = 'Ready for Python...';
+                } else {
+                    console.log("在浏览器模式下运行，自行初始化...");
+                    document.getElementById('debug').innerText = 'Browser Mode';
+                    
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const modelFromUrl = urlParams.get('model');
+                    
+                    const modelToLoad = AVAILABLE_MODELS.includes(modelFromUrl) ? modelFromUrl : AVAILABLE_MODELS[0];
+
+                    console.log(`Browser mode: loading model "${modelToLoad}"`);
+                    const CHARACTER_DATA_URL = `${modelToLoad}/character_data.json`;
+                    
+                    try {
+                        const response = await fetch(CHARACTER_DATA_URL);
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        const characterData = await response.json();
+                        window.initialize(modelToLoad, characterData);
+                    } catch (error) {
+                        console.error("在浏览器模式下加载角色数据失败:", error);
+                        alert("加载角色配置失败，请确保您是通过 http server 访问，而不是直接打开 file://... URL。");
+                    }
+                }
+            })();
+    
+    
+            // ================= 右键菜单逻辑 =================
+            const menu = document.getElementById('contextMenu');
+            const motionContainer = document.getElementById('motionListContainer');
+            const modelSwitchContainer = document.getElementById('modelSwitchContainer');
+            const btnToggle = document.getElementById('btnToggleMotions');
+            const arrowIcon = document.getElementById('arrowIcon');
+            const exitContainer = document.getElementById('exitContainer');
+    
+            window.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                
+                // --- 动态生成模型切换菜单 ---
+                modelSwitchContainer.innerHTML = ''; // 清空旧菜单
+                AVAILABLE_MODELS.forEach(modelName => {
+                    const item = document.createElement('div');
+                    item.className = 'menu-item';
+                    item.innerText = `→ ${modelName}`;
+                    
+                    // 如果是当前模型，则高亮(可选)
+                    <!-- if (window.model && window.model.name.startsWith(modelName)) { -->
+                         <!-- item.style.background = 'rgba(64, 158, 255, 0.2)'; -->
+                    <!-- } -->
+
+                    item.onclick = () => {
+                        // 如果点击的是当前模型，则不执行任何操作
+                        <!-- if (window.model && window.model.name.startsWith(modelName)) return; -->
+
+                        if (window.isDesktop) {
+                            // 桌面模式: 发送指令给 Python
+                            document.title = "CMD:RELOAD:" + modelName;
+                        } else {
+                            // 浏览器模式: 通过 URL 参数刷新页面
+                            window.location.href = window.location.pathname + '?model=' + modelName;
+                        }
+                    };
+                    modelSwitchContainer.appendChild(item);
+                });
+
+
+                // --- 动态生成动作列表 ---
+                if (window.model) {
+                    motionContainer.innerHTML = '';
+                    const groups = Object.keys(window.model.internalModel.motionManager.motionGroups);
+                    
+                    groups.forEach(groupName => {
+                        const item = document.createElement('div');
+                        item.className = 'motion-item';
+                        item.innerText = groupName;
+                        item.onclick = (ev) => {
+                            ev.stopPropagation();
+                            window.playMotionWithVoice(groupName);
+                            menu.style.display = 'none';
+                        };
+                        motionContainer.appendChild(item);
+                    });
+                }
+    
+                motionContainer.style.display = 'none';
+                arrowIcon.innerText = '▼';
+    
+                // --- 处理退出按钮 ---
+                exitContainer.innerHTML = '';
+                if (window.isDesktop) {
+                    const exitItem = document.createElement('div');
+                    exitItem.className = 'menu-item';
+                    exitItem.style.color = '#ff6b6b';
+                    exitItem.innerText = '✖ 退出程序';
+                    exitItem.onclick = () => { document.title = "CMD:QUIT"; };
+                    exitContainer.appendChild(exitItem);
+                }
+    
+                // --- 计算菜单位置并显示 ---
+                let x = e.clientX, y = e.clientY;
+                if (x + 220 > window.innerWidth) x = window.innerWidth - 220;
+                if (y + 300 > window.innerHeight) y = window.innerHeight - 300; // 预估一个高度
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+                menu.style.display = 'block';
+            });
+    
+            btnToggle.onclick = function(e) {
+                e.stopPropagation();
+                const isHidden = motionContainer.style.display === 'none';
+                motionContainer.style.display = isHidden ? 'block' : 'none';
+                arrowIcon.innerText = isHidden ? '▲' : '▼';
+            };
+    
+            window.addEventListener('click', () => {
+                menu.style.display = 'none';
+            });
+    </script>
+</body>
+</html>

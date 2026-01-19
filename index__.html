@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Live2D Pet</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: transparent; }
+        #canvas { display: block; width: 100%; height: 100%; }
+        /* 调试面板：让你亲眼看到 Python 传了什么数值 */
+        #debug-panel {
+            position: absolute; top: 0; left: 0; color: red; font-weight: bold; font-family: monospace;
+            background: rgba(0,0,0,0.5); padding: 5px; pointer-events: none;
+        }
+    </style>
+    <script src="https://unpkg.com/pixi.js@5.3.12/dist/pixi.min.js"></script>
+
+	<script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+
+	<script src="js/live2dcubismcore.min.js"></script>
+
+	<script src="https://unpkg.com/pixi-live2d-display@0.4.0-beta.2/dist/index.min.js"></script>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="debug-panel">Waiting...</div>
+
+    <script>
+        window.targetX = 0;
+        window.targetY = 0;
+        window.lastPythonCommandTime = 0;
+        
+        // 增加缓动变量
+        window.currentX = 0;
+        window.currentY = 0;
+
+        window.updateGaze = function(x, y) {
+            window.targetX = x;
+            window.targetY = y;
+            window.lastPythonCommandTime = Date.now();
+            
+            // 更新调试面板
+            document.getElementById('debug-panel').innerText = 
+                `Py Input: X=${x.toFixed(2)} Y=${y.toFixed(2)}`;
+        };
+
+        const app = new PIXI.Application({
+            view: document.getElementById('canvas'),
+            autoStart: true,
+            resizeTo: window,
+            transparent: true,
+            backgroundAlpha: 0,
+            antialias: true
+        });
+
+        const modelUrl = "lafeiII_3/lafeiII_3.model3.json";
+        window.model = null;
+
+        function lerp(start, end, amt) {
+            return (1 - amt) * start + amt * end;
+        }
+
+        async function init() {
+            try {
+                const model = await PIXI.live2d.Live2DModel.from(modelUrl, {
+                    autoInteract: true, // 默认开启，网页里自己玩
+                    autoUpdate: true
+                });
+                
+                app.stage.addChild(model);
+                window.model = model;
+                
+                fitLayout();
+                window.onresize = () => fitLayout();
+                
+                app.ticker.add(() => {
+                    const now = Date.now();
+                    const isPythonActive = (now - window.lastPythonCommandTime) < 500;
+
+                    // 缓动处理，让动作不卡顿
+                    // 0.1 是平滑系数，如果觉得反应慢可以改成 0.2 或 0.3
+                    window.currentX = lerp(window.currentX, window.targetX, 0.1);
+                    window.currentY = lerp(window.currentY, window.targetY, 0.1);
+
+                    if (isPythonActive) {
+                        // === Python 接管模式 ===
+                        
+                        // 1. 必须关掉自动互动！否则 focus 会被下一帧的鼠标逻辑覆盖
+                        if (model.autoInteract) {
+                            model.autoInteract = false; 
+                        }
+
+                        // 2. 调用核心接口
+                        // 这就是"完全一致"的秘诀：调用和插件内部一模一样的函数
+                        // 注意：通常 Y 轴 0 是中间，-1 是上，1 是下
+                        // 如果发现反了，给 window.currentY 加负号
+                        model.focus(window.currentX, window.currentY);
+                    } 
+                    else {
+                        // === 浏览器模式 ===
+                        if (!model.autoInteract) {
+                            model.autoInteract = true;
+                            // 重置
+                            window.currentX = 0; 
+                            window.currentY = 0;
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        function fitLayout() {
+            if (!window.model || !window.model.internalModel) return;
+            const mh = window.model.internalModel.height || 1000;
+            const h = window.innerHeight;
+            const scale = (h * 0.85) / mh;
+            window.model.scale.set(scale);
+            window.model.x = window.innerWidth / 2;
+            window.model.y = window.innerHeight / 2 + (h * 0.1);
+            window.model.anchor.set(0.5, 0.5);
+        }
+
+        init();
+    </script>
+</body>
+</html>

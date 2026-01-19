@@ -1,0 +1,26 @@
+{
+    "voiceMap": {
+        "effect": "desc.mp3",
+        "login": "login.mp3",
+        "idle": "detail.mp3",
+        "main_1": "main_1.mp3",
+        "main_2": "main_2.mp3",
+        "main_3": "main_3.mp3",
+        "touch_body": "touch.mp3",
+        "touch_special": "touch2.mp3",
+        "touch_head": "touch.mp3",
+        "home": "home.mp3"
+    },
+    "voiceTextMap": 
+	{
+		"desc.mp3": "…新年快乐，吉祥如意？这么说就可以了…？唔，感觉有点困了，拉菲可以回去再睡会了吗？",
+		"login.mp3": "指挥官还不回来，拉菲要靠着树睡着了……Zzz……",
+		"detail.mp3": "新年…春节…有什么不同吗？拉菲不是很明白…不过，能好吃好睡的节日…就是好节日，嗯",
+		"main_1.mp3": "春节限定版兔耳和兔兔拖鞋…指挥官喜欢吗？拉菲…很喜欢…",
+		"main_2.mp3": "z23，好像对春节的传说很有兴趣的样子……",
+		"main_3.mp3": "像这样在树上坐着，拉菲感觉自己也要开花了…",
+		"touch.mp3": "拉菲没有想借指挥官的肩膀靠一会，嗯，并没有……",
+		"touch2.mp3": "指挥官，又在想奇怪的事了吗…",
+		"home.mp3": "那个红红的，一串一串，烧起来之后砰砰砰砰的……唔，有点吵……"
+	}
+}

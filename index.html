@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Live2D Web Demo</title>
+	<!-- <script src="https://unpkg.com/pixi.js@5.3.12/dist/pixi.min.js"></script> -->
+	<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+	<!-- <script src="js/live2dcubismcore.min.js"></script> -->
+	<script src="https://cdn.jsdelivr.net/npm/live2dcubismcore@1.0.0/live2dcubismcore.min.js"></script>
+	<!-- <script src="https://unpkg.com/pixi-live2d-display@0.4.0-beta.2/dist/index.min.js"></script> -->
+	<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
+	<style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: transparent; 
+        }
+        #canvas { display: block; width: 100%; height: 100%; pointer-events: auto; }
+        
+        /* 调试信息样式 */
+        #debug {
+            position: absolute; top: 0; left: 0; color: cyan; 
+            font-family: monospace; font-size: 16px; background: rgba(0,0,0,0.5); 
+            padding: 5px; pointer-events: none;
+            z-index: 10;
+        }
+
+        /* 新增：字幕样式 */
+        #subtitle {
+            position: absolute;
+            bottom: 10%;
+            width: 100%;
+            text-align: center;
+            font-family: "Microsoft YaHei", sans-serif;
+            font-size: 24px;
+            color: white;
+            text-shadow: 2px 2px 4px #000000;
+            pointer-events: none; /* 防止遮挡鼠标点击 */
+            z-index: 20;
+            transition: opacity 0.5s;
+            opacity: 0; /* 默认隐藏 */
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+        #subtitle.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+	<canvas id="canvas"></canvas>
+	<div id="debug">Waiting for Python...</div>
+	<div id="subtitle"></div>
+
+	<script>
+		// ================= 配置区域 =================
+        const MODEL_NAME = "lafeiII_3"; // 模型文件夹名
+        const BASE_PATH = `${MODEL_NAME}/`;
+        const SOUND_ROOT = `${BASE_PATH}sound/`;
+        const MODEL_JSON_URL = `${BASE_PATH}${MODEL_NAME}.model3.json`;
+
+        // =============== 全局变量 ================
+        window.model = null;
+        window.targetX = 0;
+        window.targetY = 0;
+        window.lastPythonCommandTime = 0;
+        let clickCount = 0; // 用于循环点击播放动作
+        let subtitleTimer = null; // 字幕计时器
+		
+        const voiceMap = {
+            "effect": `${SOUND_ROOT}desc.mp3`, // ???
+            "login": `${SOUND_ROOT}login.mp3`,
+            "idle": `${SOUND_ROOT}detail.mp3`,  // ???
+            "main_1": `${SOUND_ROOT}main_1.mp3`,
+            "main_2": `${SOUND_ROOT}main_2.mp3`,
+			"main_3": `${SOUND_ROOT}main_3.mp3`,
+			"touch_body": `${SOUND_ROOT}touch.mp3`,
+			"touch_special": `${SOUND_ROOT}touch2.mp3`,
+			"touch_head": `${SOUND_ROOT}headtouch.mp3`,
+			"mission_complete": `${SOUND_ROOT}mission_complete.mp3`,
+			"home": `${SOUND_ROOT}home.mp3`,
+			"wedding": `${SOUND_ROOT}feeling5.mp3`,
+			"mission": `${SOUND_ROOT}expedition.mp3`,
+			"complete": `${SOUND_ROOT}win_mvp.mp3`,
+			"touch_drag1": `${SOUND_ROOT}lose.mp3`,
+			"touch_drag1": `${SOUND_ROOT}hp_warning.mp3`,
+        };
+
+        // 语音文件名 -> 字幕文本映射
+        const voiceTextMap = {
+            "desc.mp3": "拉菲在店里……帮忙……指挥官，随意坐，只要是空位都可以吧，大概。",
+            "login.mp3": "拉菲才没有在到处找指挥官呢，嗯，没有。",
+            "detail.mp3": "袜子上印着兔兔……鞋子也有……拉菲，很喜欢，指挥官也喜欢吗？",
+            "main_1.mp3": "拉菲的任务，把餐点送到桌子上……指挥官在，所以这份工作一点也不无聊……嗯。",
+            "main_2.mp3": "如果英格拉罕能发明菜品传送带的话……拉菲就不用送订单了吧……？",
+            "main_3.mp3": "因为是来帮忙的，拉菲想要坚持做完……拉菲没有想和艾伦坐着偷懒，嗯，完全没想过。",
+            "touch.mp3": "兔兔的耳朵立起来很好摸……？唔……不明白……",
+            "touch2.mp3": "指挥官，变态，衣服上的兔兔要掉下去了……",
+            "headtouch.mp3": "指挥官，拉菲没有打瞌睡哦……没有，嗯。",
+            "mission_complete.mp3": "任务完成，指挥官，拉菲要睡一会儿……Zzzz……",
+            "home.mp3": "指挥官，要点餐吗？……陪伴套餐？当然可以。",
+            "feeling5.mp3": "……拉菲的工作……提不起劲……拉菲才没有想放下手中的工作去找指挥官……嗯，完全没有。",
+            "expedition.mp3": "委托组，回来了。店里等一下会很热闹……吧？",
+            "win_mvp.mp3": "胜利了，指挥官，碰个杯吧……",
+            "lose.mp3": "啊…泼出来……也没关系吧……",
+            "hp_warning.mp3": "拉菲……要滑倒了……好险……！"
+        };
+
+        // 随机语音池 (当动作没有指定语音时使用)
+        const randomVoicePool = [
+            `${SOUND_ROOT}touch2.mp3`, 
+            `${SOUND_ROOT}login.mp3`, 
+            `${SOUND_ROOT}touch.mp3`, 
+            `${SOUND_ROOT}desc.mp3`
+        ];
+		
+		// ================= 核心功能函数 =================
+		// 1. 显示字幕
+        function showSubtitle(text, duration = 5000) {
+            const el = document.getElementById('subtitle');
+            el.innerText = text;
+            el.classList.add('visible');
+
+            // 重置计时器，防止上一句的消失逻辑打断当前句
+            if (subtitleTimer) clearTimeout(subtitleTimer);
+            subtitleTimer = setTimeout(() => {
+                el.classList.remove('visible');
+            }, duration);
+        }
+		
+		window.updateFocus = (dx, dy) => {
+			if (window.model) window.model.focus(dx, dy);
+			window.lastPythonCommandTime = Date.now();
+			document.getElementById('debug').innerText = `Python: ${dx.toFixed(2)}, ${dy.toFixed(2)}`;
+		};
+		window.playVoice = (voicePath) => {
+			console.log(`${voicePath}`)
+			if (!voicePath) return;
+			
+			const audio = new Audio(voicePath);
+			audio.play().catch(e => console.log("语音播放失败:", e));
+		};
+		
+		window.playMotionWithVoice = (groupName) => {
+			if (!window.model) return;
+			window.model.motion(groupName);
+			const voicePath = voiceMap[groupName];
+			if (voicePath) {
+				window.model.speak(voicePath);
+			} else {
+				console.log(`动作 ${groupName} 没有关联语音`);
+				const randomPath = randomVoicePool[Math.floor(Math.random() * randomVoicePool.length)];
+				window.model.speak(randomPath);
+				<!-- window.playVoice(randomPath); -->
+				<!-- window.playVoice(voiceMap[groupName]); -->
+			}
+		};
+		window.playMotion = (groupName) => {
+			if (window.model) {
+				if (window.model.internalModel.motionManager.motionGroups[groupName]) {
+					console.log(`play motion ${groupName}`)
+					window.model.motion(groupName);
+				} else {
+					console.log(`动作组 ${groupName} 不存在，尝试播放随机动作`);
+					window.playRandomMotion();
+				}
+			}
+		};
+		// 2. 播放随机动作的接口
+		window.playRandomMotion = () => {
+			if (window.model) {
+				// 自动寻找 motions 组中的动作播放
+				const groups = Object.keys(window.model.internalModel.motionManager.motionGroups);
+				if (groups.length > 0) {
+					const randomGroup = groups[Math.floor(Math.random() * groups.length)];
+					console.log(`play motion ${randomGroup}`)
+					window.model.motion(randomGroup);
+				}
+			}
+		};
+		
+		const app = new PIXI.Application({
+			view: document.getElementById('canvas'),
+			autoStart: true,
+			resizeTo: window,
+			// 关键设置：开启透明通道
+			transparent: true, 
+			backgroundAlpha: 0, // 某些版本 Pixi 需要这个
+			antialias: true
+		});
+
+		// 确保路径指向你本地的 json 文件
+		const model_name = "lafeiII_3" // "lafei_4" "lafeiII_3"
+		const modelUrl = `${model_name}/${model_name}.model3.json`;
+		let clickcount=0;
+
+		async function init() {
+			// 1. 加载模型
+			const model = await PIXI.live2d.Live2DModel.from(modelUrl, {
+				autoInteract: false, // 彻底关闭自带的鼠标监听，完全由 Python 接管
+				autoUpdate: true	 // 保持物理自动更新
+			});
+			model.interactive = true;
+			model.blink = true;
+			model.lipSync = true;
+			
+			app.stage.addChild(model);
+			window.model = model;
+			window.model.speak = function(audioPath, options = {}) {
+				if (this._currentAudio) {
+					this._currentAudio.pause();
+					this._currentAudio.src = "";
+				}
+
+				const audio = new Audio(audioPath);
+				this._currentAudio = audio;
+
+				audio.play();
+			};
+			const groups = Object.keys(window.model.internalModel.motionManager.motionGroups);
+			model.anchor.set(0.5, 0.5);
+			model.on('pointertap', (event) => {
+				const { x, y } = event.data.global;
+				const localPoint = model.toModelPosition(new PIXI.Point(x, y));
+				window.playMotionWithVoice(groups[clickcount]);
+				clickcount+=1;
+				console.log(`click count = ${clickcount}`)
+
+				
+			});
+			<!-- const core = model.internalModel.coreModel; -->
+
+			model.removeAllListeners('pointermove');
+			model.removeAllListeners('pointerdown');
+			model.removeAllListeners('pointerup');
+			model.removeAllListeners('pointerout'); // 最关键的一行！防止出界重置
+			model.removeAllListeners('pointerleave');
+			
+			fitLayout();
+			<!-- window.onresize = fitLayout; -->
+			window.onresize = () => fitLayout();
+			
+			// 获取内部核心
+			const internal = model.internalModel;
+			const core = internal.coreModel;
+
+			// 2. 每一帧的更新逻辑
+			app.ticker.add(() => {
+				const now = Date.now();
+					// 判断：如果最近 500ms 内收到过 Python 指令，说明现在是"桌面模式"
+					const isPythonActive = (now - window.lastPythonCommandTime) < 500;
+					if (isPythonActive && core) {
+						const pixelX = window.targetX * (window.innerWidth / 2) * 1;
+						const pixelY = -window.targetY * (window.innerHeight / 2) * 1;
+						model.focus(pixelX, pixelY);
+					} 
+			});
+		}
+		
+		function fitLayout() {
+			if (!window.model) return;
+			<!-- // 增加安全检查，防止除以 0 导致模型变成无穷大(消失) -->
+			const modelHeight = window.model.internalModel.height;
+			if (!modelHeight || modelHeight === 0) return;
+
+			<!-- const h = window.innerHeight; -->
+			<!-- const scale = (h * 0.85) / modelHeight; -->
+			
+			<!-- window.model.scale.set(scale); -->
+			<!-- window.model.x = window.innerWidth / 2; -->
+			<!-- window.model.y = window.innerHeight / 2 + (h * 0.1); -->
+			<!-- window.model.anchor.set(0.5, 0.5); -->
+			
+			window.model.scale.set((window.innerHeight * 0.8) / window.model.internalModel.height);
+			window.model.x = window.innerWidth / 2;
+			window.model.y = window.innerHeight / 2 + 50;
+			window.model.anchor.set(0.5, 0.5);
+		}
+
+		init();
+	</script>
+</body>
+</html>

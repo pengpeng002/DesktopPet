@@ -1,0 +1,38 @@
+{
+    "voiceMap": {
+        "effect": "desc.mp3",
+        "login": "login.mp3",
+        "idle": "detail.mp3",
+        "main_1": "main_1.mp3",
+        "main_2": "main_2.mp3",
+        "main_3": "main_3.mp3",
+        "touch_body": "touch.mp3",
+        "touch_special": "touch2.mp3",
+        "touch_head": "headtouch.mp3",
+        "mission_complete": "mission_complete.mp3",
+        "home": "home.mp3",
+        "wedding": "feeling5.mp3",
+        "mission": "expedition.mp3",
+        "complete": "victory.mp3",
+        "touch_drag1": "hp_warning.mp3"
+    },
+    "voiceTextMap": {
+        "desc.mp3": "拉菲在店里……帮忙……指挥官，随意坐，只要是空位都可以吧，大概。",
+        "login.mp3": "拉菲才没有在到处找指挥官呢，嗯，没有。",
+        "detail.mp3": "袜子上印着兔兔……鞋子也有……拉菲，很喜欢，指挥官也喜欢吗？",
+        "main_1.mp3": "拉菲的任务，把餐点送到桌子上……指挥官在，所以这份工作一点也不无聊……嗯。",
+        "main_2.mp3": "如果英格拉罕能发明菜品传送带的话……拉菲就不用送订单了吧……？",
+        "main_3.mp3": "因为是来帮忙的，拉菲想要坚持做完……拉菲没有想和艾伦坐着偷懒，嗯，完全没想过。",
+        "touch.mp3": "兔兔的耳朵立起来很好摸……？唔……不明白……",
+        "touch2.mp3": "指挥官，变态，衣服上的兔兔要掉下去了……",
+        "headtouch.mp3": "指挥官，拉菲没有打瞌睡哦……没有，嗯。",
+        "mission_complete.mp3": "任务完成，指挥官，拉菲要睡一会儿……Zzzz……",
+        "home.mp3": "指挥官，要点餐吗？……陪伴套餐？当然可以。",
+        "feeling5.mp3": "……拉菲的工作……提不起劲……拉菲才没有想放下手中的工作去找指挥官……嗯，完全没有。",
+        "expedition.mp3": "委托组，回来了。店里等一下会很热闹……吧？",
+        "win_mvp.mp3": "胜利了，指挥官，碰个杯吧……",
+        "lose.mp3": "啊…泼出来……也没关系吧……",
+        "hp_warning.mp3": "拉菲……要滑倒了……好险……！",
+        "wedding.mp3": "……是指挥官的关心，成就了现在的拉菲。只要是拉菲，指挥官就会一直看着……所以、嗯…拉菲也和指挥官约定，拉菲会一直和指挥官在一起。"
+    }
+}
